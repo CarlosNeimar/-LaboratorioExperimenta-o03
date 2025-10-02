@@ -1,6 +1,6 @@
 import time
 import requests
-from . import config  # Importa as configurações do mesmo módulo
+from ...code.src.config import config  # Importa as configurações do mesmo módulo
 
 class GitHubClient:
     """Um cliente para interagir com a API REST do GitHub."""

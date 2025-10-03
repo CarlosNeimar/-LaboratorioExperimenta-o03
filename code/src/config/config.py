@@ -1,23 +1,15 @@
 import os
-from pathlib import Path
 from dotenv import load_dotenv
 
-# Encontra o diretório raiz do projeto para localizar o .env
-# Path(__file__) -> config.py
-# .parent -> Sprint/
-# .parent -> src/
-# .parent -> raiz do projeto
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-load_dotenv(dotenv_path=BASE_DIR / ".env")
+# Carrega as variáveis do arquivo .env para o ambiente
+load_dotenv()
 
-# Carrega o token e valida sua existência
+# Obtém o token do GitHub a partir das variáveis de ambiente
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-if not GITHUB_TOKEN:
-    raise ValueError("Token do GitHub não encontrado. Verifique seu arquivo .env na raiz do projeto.")
 
-# Constantes da API
-GITHUB_API_URL = "https://api.github.com"
-HEADERS = {
-    "Authorization": f"token {GITHUB_TOKEN}",
-    "Accept": "application/vnd.github.v3+json",
-}
+# Validação para garantir que o token foi definido
+if not GITHUB_TOKEN:
+    raise ValueError(
+        "A variável de ambiente GITHUB_TOKEN não foi definida. "
+        "Crie um arquivo .env na raiz do projeto e adicione a variável."
+    )

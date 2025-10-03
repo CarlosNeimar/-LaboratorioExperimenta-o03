@@ -1,2 +1,4 @@
 .env
 /src/Sprint1/__pycache__/
+venv/
+__pycache__/

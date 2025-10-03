@@ -1,7 +1,7 @@
 from tqdm import tqdm
-from .github_client import GitHubClient
-from . import data_processor
-from . import file_exporter
+from .queries.github_client import GitHubClient
+from .queries import data_processor
+from .utils import file_exporter
 
 def run_analysis():
     """Função principal que orquestra todo o processo de análise."""

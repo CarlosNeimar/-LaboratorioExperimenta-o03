@@ -1,0 +1,7 @@
+query($owner:String!, $name:String!) {
+  repository(owner:$owner, name:$name) {
+    pullRequests(states: [MERGED, CLOSED]) {
+      totalCount
+    }
+  }
+}

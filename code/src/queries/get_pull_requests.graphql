@@ -1,0 +1,35 @@
+query($owner:String!, $name:String!, $first:Int!, $after:String) {
+  repository(owner:$owner, name:$name) {
+    # Busca PRs fechados, ordenados por data de criação
+    pullRequests(states:CLOSED, first:$first, orderBy:{field:CREATED_AT, direction:DESC}, after: $after) {
+      nodes {
+        number
+        title
+        author {
+          login
+        }
+        createdAt
+        closedAt
+        merged
+        additions
+        deletions
+        changedFiles
+        bodyText
+        url
+        participants(first: 1) {
+          totalCount
+        }
+        comments(first: 1) {
+          totalCount
+        }
+        reviews(first:1){
+          totalCount
+        }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+}

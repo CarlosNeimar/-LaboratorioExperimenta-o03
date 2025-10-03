@@ -1,0 +1,19 @@
+query($q:String!, $first:Int!, $after:String) {
+  search(query: $q, type: REPOSITORY, first: $first, after: $after) {
+    nodes {
+      ... on Repository {
+        name
+        owner { login }
+        stargazerCount
+        url
+        pullRequests(states: [MERGED, CLOSED]) {
+          totalCount
+        }
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}

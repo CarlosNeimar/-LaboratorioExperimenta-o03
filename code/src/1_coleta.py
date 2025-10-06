@@ -1,84 +1,105 @@
-import csv
+# -*- coding: utf-8 -*-
 import os
-from api.github_gateway import GitHubGateway
-from api.http_client import HTTPClient
-from config import config
+import time
+from github import Github, Auth, RateLimitExceededException
+from dotenv import load_dotenv
 
-MIN_STARS = 1000
-CANDIDATE_POOL_SIZE = 1000 
+load_dotenv('./config/.env')
+# --- CONFIGURAÇÕES ---
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+NUM_REPOS = 200
 MIN_PULL_REQUESTS = 100
-FINAL_REPOS_LIMIT = 200
-PRS_PER_REPO_LIMIT = 200
-OUTPUT_FILE = "pull_requests_raw.csv"
+OUTPUT_FILE = "repos_elegiveis.txt"
+RATE_LIMIT_THRESHOLD = 50
 
-def main():
-    if os.path.exists(OUTPUT_FILE):
-        print(f"O arquivo '{OUTPUT_FILE}' já existe. Remova-o para uma nova coleta.")
+def esperar_reset_limit(g):
+    """
+    Função auxiliar para aguardar o reset da janela de limite de taxa da API.
+    É chamada quando uma RateLimitExceededException é capturada.
+    """
+    core_rate_limit = g.get_rate_limit().resources.core
+    reset_timestamp = core_rate_limit.reset.timestamp()
+    sleep_time = max(0, (reset_timestamp - time.time()))
+    print(f"Limite de taxa da API atingido. Aguardando por {sleep_time:.2f} segundos.")
+    time.sleep(sleep_time + 5)
+
+def verificar_taxa_limit(g):
+    """
+    Verifica o limite de taxa e aguarda se estiver abaixo do previsto
+    """
+    core_rate_limit = g.get_rate_limit().resources.core
+    if core_rate_limit.remaining < RATE_LIMIT_THRESHOLD:
+        reset_timestamp = core_rate_limit.reset.timestamp()
+        sleep_time = max(0, (reset_timestamp - time.time()))
+        print(f"Limite de taxa próximo do fim ({core_rate_limit.remaining} restantes). Aguardando por {sleep_time:.2f} segundos.")
+        time.sleep(sleep_time + 5)
+
+def buscar_repositorios_populares():
+    """
+    Busca os repositórios mais populares no GitHub e os filtra com base no número mínimo de pull requests.
+    """
+    if not GITHUB_TOKEN:
+        print("Erro: O token do GitHub não foi encontrado. Defina a variável de ambiente GITHUB_TOKEN.")
         return
-
-    client = HTTPClient(token=config.GITHUB_TOKEN)
-    gateway = GitHubGateway(client=client)
-
-    search_query = f"stars:>{MIN_STARS} sort:stars-desc"
-    print(f"FASE 1: Buscando os {CANDIDATE_POOL_SIZE} repositórios mais populares (limite da API)...")
-    
-    candidate_repos = gateway.search_top_repo_candidates(
-        search_query=search_query,
-        limit=CANDIDATE_POOL_SIZE
-    )
-    if not candidate_repos:
-        print("Busca inicial de candidatos falhou.")
-        return
-    print(f"Encontrados {len(candidate_repos)} candidatos.")
-
-    print(f"\nFASE 2: Verificando cada candidato para encontrar {FINAL_REPOS_LIMIT} repositórios com >{MIN_PULL_REQUESTS} PRs...")
-    final_repos = []
-    for i, repo in enumerate(candidate_repos):
-        print(f"  Verificando [{i+1}/{len(candidate_repos)}]: {repo['full_name']}...", end=" ")
-        
-        pr_count = gateway.get_repo_pr_count(owner=repo["owner"], name=repo["name"])
-        print(f"PRs: {pr_count}")
-        
-        if pr_count > MIN_PULL_REQUESTS:
-            repo['pull_requests_count'] = pr_count
-            final_repos.append(repo)
-
-        if len(final_repos) >= FINAL_REPOS_LIMIT:
-            print(f"\nMeta de {FINAL_REPOS_LIMIT} repositórios qualificados atingida.")
-            break
-
-    if not final_repos:
-        print("Nenhum repositório qualificado encontrado. Tente diminuir MIN_STARS.")
+    try:
+        auth = Auth.Token(GITHUB_TOKEN)
+        g = Github(auth=auth)
+        _ = g.get_user().login
+    except Exception as e:
+        print(f"Erro ao autenticar com o token do GitHub: {e}")
+        print("Verifique se o token é válido e possui as permissões necessárias.")
         return
     
-    print(f"\nSeleção final: {len(final_repos)} repositórios. Iniciando coleta de pull requests...")
-    all_prs = []
-    for i, repo in enumerate(final_repos):
-        print(f"[{i+1}/{len(final_repos)}] Coletando PRs de {repo['full_name']}...")
-        prs = gateway.get_pull_requests(owner=repo["owner"], name=repo["name"], limit=PRS_PER_REPO_LIMIT)
-        for pr in prs:
-            pr["repo_full_name"] = repo["full_name"]
-            pr["repo_stargazers"] = repo["stargazers"]
-        all_prs.extend(prs)
-        print(f"Coletados {len(prs)} PRs.")
+    print(f"Iniciando a busca pelos {NUM_REPOS} repositórios mais populares...")
+    repos_elegiveis = []
 
-    if not all_prs:
-        print("Nenhum pull request foi coletado.")
-        return
+    try:
+        repos = g.search_repositories(query='stars:>1', sort='stars', order='desc')
+        
+        repo_count = 0
+        for repo in repos:
+            if len(repos_elegiveis) >= NUM_REPOS:
+                break
 
-    print(f"\nSalvando {len(all_prs)} pull requests em '{OUTPUT_FILE}'...")
-    fieldnames = [
-        "repo_full_name", "repo_stargazers", "number", "title", "author",
-        "created_at", "closed_at", "merged", "additions", "deletions",
-        "changed_files", "description_length", "participants_count",
-        "comments_count", "reviews_count", "review_duration_hours", "url"
-    ]
-    with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(all_prs)
-    print("Coleta de dados concluída com sucesso!")
+            repo_count += 1
+            print(f"Verificando repositório #{repo_count}: {repo.full_name} (Estrelas: {repo.stargazers_count})")
+            verificar_taxa_limit(g)
+
+            try:
+                pull_requests = repo.get_pulls(state='all') 
+                if pull_requests.totalCount >= MIN_PULL_REQUESTS:
+                    print(f"  -> Repositório {repo.full_name} é elegível com {pull_requests.totalCount} pull requests.")
+                    repos_elegiveis.append(repo.full_name)
+                else:
+                    print(f"  -> Repositório {repo.full_name} ignorado. Possui apenas {pull_requests.totalCount} pull requests.")
+
+            except RateLimitExceededException:
+                esperar_reset_limit(g)
+                pull_requests = repo.get_pulls(state='all')
+                if pull_requests.totalCount >= MIN_PULL_REQUESTS:
+                    print(f"  -> Repositório {repo.full_name} é elegível com {pull_requests.totalCount} pull requests (após espera).")
+                    repos_elegiveis.append(repo.full_name)
+                else:
+                    print(f"  -> Repositório {repo.full_name} ignorado (após espera).")
+            
+            except Exception as e:
+                print(f"  -> Ocorreu um erro ao verificar o repositório {repo.full_name}: {e}")
+                continue
+
+    except RateLimitExceededException:
+        print("Limite de taxa da API atingido durante a busca inicial de repositórios.")
+        esperar_reset_limit(g)
+
+    except Exception as e:
+        print(f"Ocorreu um erro inesperado: {e}")
+
+    if repos_elegiveis:
+        with open(OUTPUT_FILE, 'w') as f:
+            for nome_repo in repos_elegiveis:
+                f.write(f"{nome_repo}\n")
+        print(f"\nBusca concluída. {len(repos_elegiveis)} repositórios elegíveis foram salvos em '{OUTPUT_FILE}'.")
+    else:
+        print("\nNenhum repositório elegível foi encontrado com os critérios especificados.")
 
 if __name__ == "__main__":
-    main()
-
+    buscar_repositorios_populares()

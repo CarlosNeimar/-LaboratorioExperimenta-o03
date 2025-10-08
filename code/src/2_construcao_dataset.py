@@ -1,7 +1,7 @@
 import os
 import time
 import csv
-from datetime import datetime, timedelta, timezone # Importa 'timezone'
+from datetime import datetime, timedelta, timezone
 from github import Github, Auth, RateLimitExceededException, GithubException
 from dotenv import load_dotenv
 
@@ -14,6 +14,7 @@ OUTPUT_CSV = "dataset_bruto.csv"
 PROGRESS_FILE = "progress.txt"
 RATE_LIMIT_THRESHOLD = 50
 PR_TIME_LIMIT_DAYS = 730 # Aproximadamente 2 anos
+MAX_PRS_PER_REPO = 100
 
 class RateLimiter:
     """
@@ -159,6 +160,9 @@ def buscar_todos_prs():
                 for pr in pull_requests:
                     if pr.created_at < time_limit:
                         print(f"\n  - Atingido o limite de data ({PR_TIME_LIMIT_DAYS} dias). Parando a extração para {repo_full_name}.")
+                        break
+                    elif pr_count >= MAX_PRS_PER_REPO:
+                        print(f"\n  - Atingido o limite máximo de PRs por repositório ({MAX_PRS_PER_REPO}). Parando a extração para {repo_full_name}.")
                         break
 
                     pr_count += 1

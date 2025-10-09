@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import csv
 # --- CONFIGURAÇÕES ---
-INPUT_CSV = "dataset_bruto.csv"
+INPUT_CSV = "MeuOrig.csv"
 OUTPUT_CSV = "dataset_final.csv"
 MIN_REVIEW_DURATION_HOURS = 1.0
 
@@ -20,15 +20,12 @@ def process_raw_data():
         print(f"Erro: Arquivo de entrada '{INPUT_CSV}' não encontrado. Execute o script 02 primeiro.")
         return
 
-    # --- LIMPEZA E TRANSFORMAÇÃO DE DADOS ---
     df['created_at'] = pd.to_datetime(df['created_at'], errors='coerce')
     df['closed_at'] = pd.to_datetime(df['closed_at'], errors='coerce')
     df['merged_at'] = pd.to_datetime(df['merged_at'], errors='coerce')
     df.dropna(subset=['created_at', 'closed_at'], inplace=True)
     print(f"Linhas restantes após remover datas inválidas: {len(df)}")
 
-    # --- APLICAÇÃO DOS FILTROS DO PROJETO ---
-    # 1. Filtro de status: Apenas PRs com status 'MERGED' ou 'CLOSED'
     df_filtered = df[df['state'] == 'closed'].copy()
     print(f"Linhas restantes após filtrar por status 'closed': {len(df_filtered)}")
     # 2. Filtro de revisão: Deve possuir pelo menos uma revisão.
@@ -39,13 +36,11 @@ def process_raw_data():
     df_filtered = df_filtered[df_filtered['review_duration_hours'] > MIN_REVIEW_DURATION_HOURS].copy()
     print(f"Linhas restantes após filtrar por duração de revisão > {MIN_REVIEW_DURATION_HOURS} hora: {len(df_filtered)}")
 
-    # --- CÁLCULO DE MÉTRICAS DERIVADAS ---
     df_filtered['merged'] = df_filtered['merged_at'].notna()
     df_filtered['comments_count'] = df_filtered['comments_count'].fillna(0) + df_filtered['review_comments_count'].fillna(0)
     df_filtered['comments_count'] = df_filtered['comments_count'].astype(int)
     df_filtered['review_duration_hours'] = df_filtered['review_duration_hours'].round(2)
     
-    # --- ESTRUTURAÇÃO DO DATASET FINAL ---
     final_columns = [
         'repo_full_name', 'pr_number', 'title', 'author', 'created_at', 
         'closed_at', 'merged', 'additions', 'deletions', 'changed_files',
